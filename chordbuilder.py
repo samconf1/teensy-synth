@@ -1,4 +1,5 @@
 import board
+import synth
 import digitalio
 import analogio
 from math import floor
@@ -8,16 +9,15 @@ import busio
 import adafruit_ili9341
 from adafruit_display_text import label
 from adafruit_midi import control_change
-
+from adafruit_display_shapes.roundrect import RoundRect
 try:
     from fourwire import FourWire
 except ImportError:
     from displayio import FourWire
+import uihandler
 
 
-
-
-btnI, btnII, btnIII, btnIV, btnV, btnVI, btnVII, btn7th, btn9th, btnsus2, btnsus4, btnAsharp, shift, octaveUp, octaveDown, bass = digitalio.DigitalInOut(board.GP1), digitalio.DigitalInOut(board.GP2),digitalio.DigitalInOut(board.GP3),digitalio.DigitalInOut(board.GP4),digitalio.DigitalInOut(board.GP5),digitalio.DigitalInOut(board.GP6),digitalio.DigitalInOut(board.GP7),digitalio.DigitalInOut(board.GP8),digitalio.DigitalInOut(board.GP9),digitalio.DigitalInOut(board.GP10),digitalio.DigitalInOut(board.GP11),digitalio.DigitalInOut(board.GP12),digitalio.DigitalInOut(board.GP13),digitalio.DigitalInOut(board.GP20),digitalio.DigitalInOut(board.GP21),digitalio.DigitalInOut(board.GP22)
+btnI, btnII, btnIII, btnIV, btnV, btnVI, btnVII, btn7th, btn9th, btnsus2, btnsus4, btnAsharp, shift, octaveUp, octaveDown = digitalio.DigitalInOut(board.GP1), digitalio.DigitalInOut(board.GP2),digitalio.DigitalInOut(board.GP3),digitalio.DigitalInOut(board.GP4),digitalio.DigitalInOut(board.GP5),digitalio.DigitalInOut(board.GP6),digitalio.DigitalInOut(board.GP7),digitalio.DigitalInOut(board.GP8),digitalio.DigitalInOut(board.GP9),digitalio.DigitalInOut(board.GP10),digitalio.DigitalInOut(board.GP11),digitalio.DigitalInOut(board.GP12),digitalio.DigitalInOut(board.GP13),digitalio.DigitalInOut(board.GP20),digitalio.DigitalInOut(board.GP21),digitalio.DigitalInOut(board.GP22)
 
 
 btnI.switch_to_input(pull=digitalio.Pull.DOWN) # GP1
@@ -35,7 +35,6 @@ btnAsharp.switch_to_input(pull=digitalio.Pull.DOWN) # GP12
 shift.switch_to_input(pull=digitalio.Pull.DOWN) # GP13
 octaveUp.switch_to_input(pull=digitalio.Pull.DOWN) # GP20
 octaveDown.switch_to_input(pull=digitalio.Pull.DOWN) # GP21
-bass.switch_to_input(pull=digitalio.Pull.DOWN) # GP22
 
 print("GPIO Pins Initialised")
 
@@ -84,23 +83,15 @@ major_chord_qualities = ["", "m", "m", "", "", "m", "dim"]
 minor_chord_qualities = ["m", "dim", "", "m", "m", "", ""]
 
 
-
+#still need a way for major/minor
 array= majorArray
-#for i in range(25):
-#    if shift.value:
- #       array = minorArray
- #       break
 
-  #  time.sleep(0.2)
 
 
 activeObj = None
 CurStateShift = False
 CurStateOctaveUp = False
 CurStateOctaveDown = False
-CurStateBass = False
-CurStateBass2 = False
-autoBass = True
 ThirdNoteVelocity = 0
 btn7Velocity = 0
 btn9Velocity = 0
@@ -120,39 +111,109 @@ print("Variables Defined")
 
 #DEFINING FUNCTIONS
 
-def noteOn(arrayrow, btn_obj):
+def init_chordbuilder(): #add all inits like starting octave and starting key and  
+    #display object init
+    key_text1 = label.Label(font = bitmap_font.load_font("/helvr08.bdf"), text="KEY: ", color=0x575756, anchored_position=(14,186), anchor_point=(0.0,1.0), scale=1)
+    key_text2 = label.Label(font = bitmap_font.load_font("/helvr08.bdf"), text="C Major", color=0xFFFFFF, anchored_position=(41,188), anchor_point=(0.0,1.0), scale=1)
+    octave_text1 = label.Label(font = bitmap_font.load_font("/helvr08.bdf"), text="OCTAVE: ", color=0x575756, anchored_position=(86,186), anchor_point=(0.0,1.0), scale=1)
+    octave_text2 = label.Label(font = bitmap_font.load_font("/helvr08.bdf"), text="0", color=0xFFFFFF, anchored_position=(134,185), anchor_point=(0.0,1.0), scale=1)
+    chord_text1 = label.Label(font = bitmap_font.load_font("/helvr08.bdf"), text="CHORD: ", color=0x575756, anchored_position=(154,186), anchor_point=(0.0,1.0), scale=1)
+    chord_text2 = label.Label(font = bitmap_font.load_font("/helvb14.bdf"), text="", color=0xFF0000, anchored_position=(199,186), anchor_point=(0.0,1.0), scale=1)
+
+    chord1 = RoundRect(x=12, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord1_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(31,212), anchor_point=(0.5,0.5), scale=1)
+    chord2 = RoundRect(x=56, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord2_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(75,212), anchor_point=(0.5,0.5), scale=1)
+    chord3 = RoundRect(x=100, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord3_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(119,212), anchor_point=(0.5,0.5), scale=1)
+    chord4 = RoundRect(x=144, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord4_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(163,212), anchor_point=(0.5,0.5), scale=1)
+    chord5 = RoundRect(x=188, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord5_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(206,212), anchor_point=(0.5,0.5), scale=1)
+    chord6 = RoundRect(x=232, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord6_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(251,212), anchor_point=(0.5,0.5), scale=1)
+    chord7 = RoundRect(x=276, y=193, width=38, height=38, r=7, outline=0x575756, stroke=1)
+    chord7_text = label.Label(font = bitmap_font.load_font("/helvb12.bdf"), text="", color=0xFFFFFF, anchored_position=(295,212), anchor_point=(0.5,0.5), scale=1, line_spacing=0.5)
+    
+    
+    layer2.append(key_text1)
+    layer2.append(key_text2)
+    layer2.append(octave_text1)
+    layer2.append(octave_text2)
+    layer2.append(chord_text1)
+    layer2.append(chord_text2)
+    layer2.append(chord1)
+    layer2.append(chord1_text)
+    layer2.append(chord2)
+    layer2.append(chord2_text)
+    layer2.append(chord3)
+    layer2.append(chord3_text)
+    layer2.append(chord4)
+    layer2.append(chord4_text)
+    layer2.append(chord5)
+    layer2.append(chord5_text)
+    layer2.append(chord6)
+    layer2.append(chord6_text)
+    layer2.append(chord7)
+    layer2.append(chord7_text)
+    
+
+def sendOn(arrayrow, btn_obj):
+    midi_values = []
+    velocity_values = []
     buttons[btn_obj]["chord_active"] = True
-    current_text_area.text = get_current_chord(arrayrow)
-    midi.send(NoteOn(noteValue + array[arrayrow][0], 120))
-    midi.send(NoteOn(noteValue + array[arrayrow][1], ThirdNoteVelocity))
-    midi.send(NoteOn(noteValue + array[arrayrow][2], 120))
-    midi.send(NoteOn(noteValue + array[arrayrow][3], btn7Velocity)) #7th
-    if len(array[arrayrow]) == 5:
-        midi.send(NoteOn(noteValue + array[arrayrow][4], btn9Velocity)) #9th
-        current_text_area.color = 0xFFFFFF
-    else:
-        current_text_area.color = 0xFF0000
-    if SuspendedVelocity == 120:
-        midi.send(NoteOn(noteValue + array[arrayrow][0] + SuspendedNote, SuspendedVelocity)) #sus2
-    if autoBass:
-        bassmidi.send(NoteOn(noteValue + array[arrayrow][0], 120))
+    chord_text2.text = get_current_chord(arrayrow)
+    
+    midi_values.append(noteValue + array[arrayrow][0]) #root
+    velocity_values.append(120)
+    
+    midi_values.append(noteValue + array[arrayrow][1]) #third
+    velocity_values.append(ThirdNoteVelocity)
+    
+    midi_values.append(noteValue + array[arrayrow][2]) #fifth
+    velocity_values.append(120)
+    
+    midi_values.append(noteValue + array[arrayrow][3]) #7th
+    velocity_values.append(btn7Velocity)
+    
+    if len(array[arrayrow]) == 5: #9th
+        midi_values.append(noteValue + array[arrayrow][4])
+        velocity_values.append(btn9Velocity)
+        
+    if SuspendedVelocity == 120: #sus2
+        midi_values.append(noteValue + array[arrayrow][0] + SuspendedNote)
+        
+    velocity_values.append(SuspendedVelocity)
+    synth.NoteOn(midi_values, velocity_values)
+    
+    
+    globals()["chord" + str(arrayrow+1)].outline = 1.5
+    globals()["chord" + str(arrayrow+1)].stroke = 0xff0000
+    chord_text2.text = get_current_chord()
+
     
     print("Note On")
   
-def noteOff(arrayrow, btn_obj):
+def sendOff(arrayrow, btn_obj):
+    midi_values = []
     buttons[btn_obj]["chord_active"] = False
-    current_text_area.text = ""
-    midi.send(NoteOff(noteValue + array[arrayrow][0], 120))
-    midi.send(NoteOff(noteValue + array[arrayrow][1], 120))
-    midi.send(NoteOff(noteValue + array[arrayrow][2], 120))
-    midi.send(NoteOff(noteValue + array[arrayrow][3], 120)) #7th
+    chord_text2.text = ""
+    midi_values.append(NoteOff(noteValue + array[arrayrow][0])) #root
+    midi_values.append(NoteOff(noteValue + array[arrayrow][1])) #third
+    midi_values.append(NoteOff(noteValue + array[arrayrow][2])) #fifth
+    midi_values.append(NoteOff(noteValue + array[arrayrow][3])) #7th
     
     if len(array[arrayrow]) == 5:
-        midi.send(NoteOff(noteValue + array[arrayrow][4], 120)) #9th
+        midi_values.append(NoteOff(noteValue + array[arrayrow][4])) #9th
     
     if SuspendedVelocity == 120:
-        midi.send(NoteOff(noteValue + array[arrayrow][0] + SuspendedNote, 120)) #suspended
-    bassmidi.send(NoteOff(noteValue + array[arrayrow][0], 120))
+        midi_values.append(NoteOff(noteValue + array[arrayrow][0] + SuspendedNote)) #suspended
+        
+    synth.NoteOff(midi_values)
+    
+    globals()["chord" + str(arrayrow+1)].outline = 1
+    globals()["chord" + str(arrayrow+1)].stroke = 0x575756
+    chord_text2.text = ""
     
     
 def get_chords(root):
@@ -180,9 +241,24 @@ def key_change(newRootIndex):
     global octaveNumber
     octaveNumber = 0
     noteValue = roots[newRootIndex]
+    chords = get_chords(noteValue)
+    if chords[1][-3:] == "dim":
+        chords[1] = chords[1][0] + "\n" + chords[1][1:]
+    elif chords[5][-3:] == "dim":
+        chords[5] = chords[5][0] + "\n" + chords[5][1:]
+    for i in range(7):
+        globals()["chord" + str(i+1) + "_text"].text = chords[i]
+        
+    if len(chords[1]) != 1:
+        chords[1] = chords[1][0]
+        key_text2.text = str(chords[1]) + "Minor"
+    else:
+        key_text2.text = str(chords[1]) + "Major"
+        
 
 
 def get_current_chord(arrayrow):
+    global inKey
     current_chord = get_chords(noteValue)[arrayrow]
     variation = ""
        
@@ -229,28 +305,13 @@ def get_current_chord(arrayrow):
             inKey = True
 
     if not inKey:
-        current_text_area.color = 0xFF0000
+        chord_text2.text = chord_text2.text + " !"
     
-    if inKey:
-        current_text_area.color = 0xFFFFFF
     
     return current_chord + variation
 
 
-
-
-    
-
-
 print("Functions Defined")
-
-
-
-        
-chord_text_area.text = "Chords:\n" + "   ".join(get_chords(noteValue))
-octave_text_area.text = "Octave: " + str(octaveNumber)
-autobass_text_area.text = "AutoBass Enabled"
-key_text_area.text = "Key: Major"
 
 print("Display Splashed")
 
@@ -279,7 +340,7 @@ black_buttons = { #buttons need a state, velocity and key value
 print("Button objects created")
 print("Loop Starting...")
 
-while True:
+def handle_keys():
     #WHITE KEYS
     
     for button_obj, button_values in buttons.items():
@@ -288,11 +349,11 @@ while True:
             if CurStateShift:
                 key_change(button_values["key_value"])
             else:
-                noteOn(button_values["row"], button_obj)
+                sendOn(button_values["row"], button_obj)
         
         if not globals()[button_obj].value and button_values["state"]:
             button_values["state"] = False
-            noteOff(button_values["row"], button_obj)
+            sendOff(button_values["row"], button_obj)
         
         
     for button_obj, button_values in black_buttons.items():
@@ -314,7 +375,7 @@ while True:
                         
                 if activeObj is not  None:
                     if len(array[buttons[activeObj]["row"]]) == 5: #So doesn't work for diminshed chord
-                        midi.send(NoteOn(noteValue + array[buttons[activeObj]["row"]][button_values["column"]], 120)) #sends 7th or 9th of the active chord alone
+                        synth.SendOn(NoteOn(noteValue + array[buttons[activeObj]["row"]][button_values["column"]], 120)) #sends 7th or 9th of the active chord alone
                         
                     
                 
@@ -339,7 +400,6 @@ while True:
         if noteValue < 100:
             noteValue += 12
             octaveNumber += 1
-            update_display(noteValue)
         CurStateOctaveUp = True
     if not octaveUp.value and CurStateOctaveUp:
         CurStateOctaveUp = False
@@ -349,44 +409,14 @@ while True:
         if noteValue > 24:
             noteValue -= 12
             octaveNumber -= 1
-            update_display(noteValue)
     if not octaveDown.value and CurStateOctaveDown:
         CurStateOctaveDown = False
 
-    if bass.value and not CurStateBass: #Bass
-        CurStateBass = True
-        if shift.value and autoBass:
-            autoBass = False
-            autobass_text_area.text = ""
-        elif shift.value and not autoBass:
-            autoBass = True
-            autobass_text_area.text = "AutoBass Enabled"
-            
-        else:
-            if not autoBass:
-                bassmidi.send(NoteOn(noteValue + array[arrayrowGlobal][0] - 24, 120))
-        
-    if not bass.value and CurStateBass:
-        CurStateBass = False
-        if not autoBass:
-            bassmidi.send(NoteOff(noteValue + array[arrayrowGlobal][0], 120))
-        
-    
-    
-    
-    if AnalogInDebounce == 20:
-        digitalSynthFilter = floor(int(analogSynthFilter.value)/516)
-        digitalSynthVol = floor(int(analogSynthVol.value)/516)
-    
-        midi.send(control_change.ControlChange(74, digitalSynthFilter, channel=0))
-        midi.send(control_change.ControlChange(2, digitalSynthVol, channel=0))
-        AnalogInDebounce = 0
-    AnalogInDebounce += 1
     
     
     
 #Make the major/minor switcher. Something should come up on the screen as well.
-#
+#Do octave switcher and shift button handler
     
     
     
@@ -395,5 +425,6 @@ while True:
       
       
     
+
 
 
