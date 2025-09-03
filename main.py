@@ -10,63 +10,59 @@ try:
     from fourwire import FourWire
 except ImportError:
     from displayio import FourWire
+    
+import uihandler
 
-# Replace with your actual button pins
-btn_oct_up = digitalio.DigitalInOut(board.D2)
-btn_oct_up.switch_to_input(pull=digitalio.Pull.DOWN)
+#input init
+oct_up = digitalio.DigitalInOut(board.D2)
+oct_up.switch_to_input(pull=digitalio.Pull.DOWN)
+oct_up_state = oct_up.value
 
-btn_oct_down = digitalio.DigitalInOut(board.D3)
-btn_oct_down.switch_to_input(pull=digitalio.Pull.DOWN)
+oct_down = digitalio.DigitalInOut(board.D3)
+oct_down.switch_to_input(pull=digitalio.Pull.DOWN)
+oct_down_state = oct_down.value
 
-btn_cw = digitalio.DigitalInOut(board.D4)
-btn_cw.switch_to_input(pull=digitalio.Pull.DOWN)
+control = rotaryio.IncrementalEncoder(board.D10, board.D9)
+control_lastpos = control.positiondef check_buttons():
 
-btn_ccw = digitalio.DigitalInOut(board.D5)
-btn_ccw.switch_to_input(pull=digitalio.Pull.DOWN)
+check_buttons():
+    if oct_up.value and not oct_up_state:
+        uihandler.scene_change("octaveUp")
+        oct_up_state = True
 
-
-def check_buttons():
-    """Poll buttons and trigger scene/patch changes."""
-    if btn_oct_up.value:
-        scene_change("octaveUp")
-
-    if btn_oct_down.value:
-        scene_change("octaveDown")
-
-    if btn_cw.value:
-        patch_change("cw")
-
-    if btn_ccw.value:
-        patch_change("ccw")
-
-
-# --- Initialisations ---
-
-displayio.release_displays()
-spi = busio.SPI(clock=board.D13, MISO=board.D12, MOSI=board.D11)
-cs = board.D10
-dc = board.D9
-reset = board.D8
-
-display_bus = FourWire(spi, command=dc, chip_select=cs, reset=reset)
-display = adafruit_ili9341.ILI9341(display_bus, width=320, height=240)
-
-splash = displayio.Group()
-display.root_group = splash
-
-bg = displayio.TileGrid(
-    displayio.Bitmap(display.width, display.height, 1),
-    pixel_shader=displayio.Palette(1)
-)
-bg.pixel_shader[0] = 0x09082B
-splash.insert(0, bg)
+    if oct_down.value and not oct_down_state:
+        uihandler.scene_change("octaveDown")
+        oct_down_state = True
+        
+    if not oct_up.value and oct_up_state:
+        oct_up_state = False
+        
+    if not oct_down.value and oct_down_state:
+        oct_down_state = False
+        
+    if control_lastpos != control.position:
+        control_change = control.position - control_lastpos
+        if abs(control_change) == control_change: #if positive
+            uihandler.patch_change("cw")
+        else:
+            uihandler.patch_change("ccw")
 
 
+uihandler.init_uihandler()
 
+while True:
+    check_buttons()
+    uihandler.handle_scenes()
+    
+    chordbuilder.handle_keys()
+    
+    
+    if note_is_on(): #and space in buffer
+        send_to_dma(generate_block())
 
-
-#while True:
-    #check_buttons()     # handle button presses
-    #handle_scenes()     # handle encoders for active scene
-    #draw_display()    # (future) update GUI here
+        
+    
+    
+    
+    
     
