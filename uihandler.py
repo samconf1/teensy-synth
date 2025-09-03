@@ -14,7 +14,6 @@ from adafruit_display_shapes.line import Line
 
 
 patches = []
-#control_pot = rotaryio.IncrementalEncoder(board.D10, board.D9)
 active_scene = "p0"
 current_patch = "p0"
 last_scene = "p0"
@@ -130,9 +129,9 @@ def clear_layer3():
     layer3 = displayio.Group()
     splash[3] = layer3
     
-    
-    
 
+    
+    
 top_left_arc = Arc(x=200, y=40, radius=25, angle=120, direction=dir_from_start(270, 120), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
 top_right_arc = Arc(x=280, y=40, radius=25, angle=320, direction=dir_from_start(270, 320), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
 bottom_left_arc = Arc(x=200, y=115, radius=25, angle=260, direction=dir_from_start(270, 260), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
@@ -212,15 +211,15 @@ parameter_metadata = {
     "osc2_unison":   {"type": "int",   "min": 1,   "max": 7,     "step": 2},
     "osc2_detune":   {"type": "float", "min": 0.0, "max": 24,  "step": 0.4},
 
-    "env1_attack":   {"type": "int",   "min": 0,   "max": 2000,  "step": 5},
-    "env1_decay":    {"type": "int",   "min": 0,   "max": 5000,  "step": 5},
+    "env1_attack":   {"type": "int",   "min": 1,   "max": 2000,  "step": 5},
+    "env1_decay":    {"type": "int",   "min": 1,   "max": 5000,  "step": 5},
     "env1_sustain":  {"type": "float", "min": 0.0, "max": 1.0,   "step": 0.01},
-    "env1_release":  {"type": "int",   "min": 0,   "max": 5000,  "step": 1},
+    "env1_release":  {"type": "int",   "min": 1,   "max": 5000,  "step": 1},
 
-    "env2_attack":   {"type": "int",   "min": 0,   "max": 2000,  "step": 5},
-    "env2_decay":    {"type": "int",   "min": 0,   "max": 5000,  "step": 5},
+    "env2_attack":   {"type": "int",   "min": 1,   "max": 2000,  "step": 5},
+    "env2_decay":    {"type": "int",   "min": 1,   "max": 5000,  "step": 5},
     "env2_sustain":  {"type": "float", "min": 0.0, "max": 1.0,   "step": 0.02},
-    "env2_release":  {"type": "int",   "min": 0,   "max": 5000,  "step": 5},
+    "env2_release":  {"type": "int",   "min": 1,   "max": 5000,  "step": 5},
 
     "filter_cutoff":        {"type": "float", "min": 200, "max": 20000.0, "step": 50},
     "filter_resonance":     {"type": "float", "min": 0.5,  "max": 5,    "step": 0.1}
@@ -281,6 +280,7 @@ class settings(Scene): #child class for settings scenes
         encoder_changes = [0,0,0]
         encoder_new_values = [0,0,0]
         text_objects = ["pot2_text1", "pot3_text1", "pot4_text1"]
+        arc_objects = [top_right_arc, bottom_left_arc, bottom_right_arc] 
         
         if top_left_lastpos != top_left.position:
             top_left_change = top_left.position - top_left_lastpos
@@ -300,32 +300,37 @@ class settings(Scene): #child class for settings scenes
             else:
                 tl_new_value = parameters[self.encoders[0]] + top_left_change*parameter_metadata[self.encoders[0]]["step"]
                 if tl_new_value <= parameter_metadata[self.encoders[0]]["max"] and tl_new_value >= parameter_metadata[self.encoders[0]]["min"]:
-                    parameters[self.encoders[0]] = tl_new_value
-                    pot1_text1.text = str(parameters[self.encoders[0]])
+                    parameters[self.encoders[0]] = tl_new_value #value
+                    pot1_text1.text = str(parameters[self.encoders[0]]) #ui
+                    top_left_arc.angle = (parameters[self.encoders[0]] - parameter_metadata[self.encoders[0]]["min"])/(parameter_metadata[self.encoders[0]]["max"] - parameter_metadata[self.encoders[0]]["min"])*360
+                    top_left_arc.direction = dir_from_start(270, top_left_arc.angle)
+                    
                     if self.encoders[0] == "env1_attack":
                         draw_env(parameters["env1_attack"], parameters["env1_decay"], parameters["env1_sustain"], parameters["env1_release"])
-                    elif encoders[0] == "env2_attack":
-                        self.draw_env(parameters["env2_attack"], parameters["env2_decay"], parameters["env2_sustain"], parameters["env2_release"])
-                    elif encoders[0] == "filter_cutoff":
-                        self.draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
+                    elif self.encoders[0] == "env2_attack":
+                        draw_env(parameters["env2_attack"], parameters["env2_decay"], parameters["env2_sustain"], parameters["env2_release"])
+                    elif self.encoders[0] == "filter_cutoff":
+                        draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
                     
             
             top_left_lastpos = top_left.position
             
-        for i in range(len(self.encoders)): #for all other parameters
+        for i in range(1, len(self.encoders)): #for all other parameters
             try:
                 if encoder_lastpos[i] != encoder_names[i].position:
                     encoder_changes[i] = encoder_names[i].position - encoder_lastpos[i]
-                    encoder_new_values[i] = parameters[self.encoders[i+1]] + encoder_changes[i]*parameter_metadata[self.encoders[i+1]]["step"]
-                    if encoder_new_values[i] <= parameter_metadata[self.encoders[i+1]]["max"] and encoder_new_values[i] >= parameter_metadata[self.encoders[i+1]]["min"]:
-                        parameters[self.encoders[i+1]] = encoder_new_values[i]
-                        globals()[text_objects[i]].text = str(parameters[self.encoders[i+1]])
+                    encoder_new_values[i] = parameters[self.encoders[i]] + encoder_changes[i]*parameter_metadata[self.encoders[i]]["step"]
+                    if encoder_new_values[i] <= parameter_metadata[self.encoders[i]]["max"] and encoder_new_values[i] >= parameter_metadata[self.encoders[i]]["min"]:
+                        parameters[self.encoders[i]] = encoder_new_values[i]
+                        globals()[text_objects[i]].text = str(parameters[self.encoders[i]])
+                        arc_objects[i].angle = (parameters[self.encoders[i]] - parameter_metadata[self.encoders[i]]["min"])/(parameter_metadata[self.encoders[i]]["max"] - parameter_metadata[self.encoders[i]]["min"])*360
+                        arc_objects[i].direction = dir_from_start(270, arc_objects[i].angle)
                         if self.encoders[0] == "env1_attack":
                             draw_env(parameters["env1_attack"], parameters["env1_decay"], parameters["env1_sustain"], parameters["env1_release"])
-                        elif encoders[0] == "env2_attack":
-                            self.draw_env(parameters["env2_attack"], parameters["env2_decay"], parameters["env2_sustain"], parameters["env2_release"])
-                        elif encoders[0] == "filter_cutoff":
-                            self.draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
+                        elif self.encoders[0] == "env2_attack":
+                            draw_env(parameters["env2_attack"], parameters["env2_decay"], parameters["env2_sustain"], parameters["env2_release"])
+                        elif self.encoders[0] == "filter_cutoff":
+                            draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
             
                 encoder_lastpos[i] = encoder_names[i].position
             
@@ -408,20 +413,113 @@ def update_settings_display():
             draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
             
             
-        
-        
-        
             
+    else: #title text, encoders + text, graph
+        title1_text.text = active_scene.split("_")[0]
+        title2_text.text = active_scene.split("_")[1]
+        patch_text.text = ""
+        left.text = ""
+        right.text = ""
+        left_text.text = ""
+        right_text.text = ""
         
+        if encoders[0] == "osc1_wave":
+            clear_layer3()
+            globals()["draw_" + parameters["osc1_wave"]]()
+        elif encoders[0] == "osc2_wave":
+            clear_layer3()
+            globals()["draw_" + parameters["osc2_wave"]]()
+        elif encoders[0] == "env1_attack":
+            clear_layer3()
+            draw_env(parameters["env1_attack"], parameters["env1_decay"], parameters["env1_sustain"], parameters["env1_release"])
+        elif encoders[0] == "env2_attack":
+            clear_layer3()
+            draw_env(parameters["env2_attack"], parameters["env2_decay"], parameters["env2_sustain"], parameters["env2_release"])
+        elif encoders[0] == "filter_cutoff":
+            clear_layer3()
+            draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
             
+        top_left_arc.angle = (parameters[encoders[0]] - parameter_metadata[encoders[0]]["min"])/(parameter_metadata[encoders[0]]["max"] - parameter_metadata[encoders[0]]["min"])*360
+        top_left_arc.direction = dir_from_start(270, top_left_arc.angle)
+        pot1_text1.text = str(parameters[encoders[0]])
+        pot1_text2.text = str(encoders[0].split("_")[1]).upper()
+        
+        top_right_arc.angle = (parameters[encoders[1]] - parameter_metadata[encoders[1]]["min"])/(parameter_metadata[encoders[1]]["max"] - parameter_metadata[encoders[1]]["min"])*360
+        top_right_arc.direction = dir_from_start(270, top_right_arc.angle)
+        pot2_text1.text = str(parameters[encoders[1]])
+        pot2_text2.text = str(encoders[1].split("_")[1]).upper()
+        
+        if len(encoders) > 2:
+            bottom_left_arc.angle = (parameters[encoders[2]] - parameter_metadata[encoders[2]]["min"])/(parameter_metadata[encoders[2]]["max"] - parameter_metadata[encoders[2]]["min"])*360
+            bottom_left_arc.direction = dir_from_start(270, bottom_left_arc.angle)
+            pot3_text1.text = str(parameters[encoders[2]])
+            pot3_text2.text = str(encoders[2].split("_")[1]).upper()
             
+            bottom_right_arc.angle = (parameters[encoders[3]] - parameter_metadata[encoders[3]]["min"])/(parameter_metadata[encoders[3]]["max"] - parameter_metadata[encoders[3]]["min"])*360
+            bottom_right_arc.direction = dir_from_start(270, bottom_right_arc.angle)
+            pot4_text1.text = str(parameters[encoders[3]])
+            pot4_text2.text = str(encoders[3].split("_")[1]).upper()
             
+        layer1.append(top_left_bg)
+        layer1.append(top_right_bg)
+        layer1.append(bottom_left_bg)
+        layer1.append(bottom_right_bg)
+        layer2.append(top_left_arc)
+        layer2.append(top_right_arc)
+        layer2.append(bottom_left_arc)
+        layer2.append(bottom_right_arc)
+        layer2.append(pot1_text1)
+        layer2.append(pot1_text2)
+        layer2.append(pot2_text1)
+        layer2.append(pot2_text2)
+        layer2.append(pot3_text1)
+        layer2.append(pot3_text2)
+        layer2.append(pot4_text1)
+        layer2.append(pot4_text2)
+        
+
+
+def update_patch_display():
+    encoders = scenes[active_scene]["encoders"]
+    if active_scene[0] == "p":
+        patch_text.text = active_scene.upper()
+    
     else:
-        #redraw everything
-    
-    
-    
-                 
+        layer1.remove(top_left_bg)
+        layer1.remove(top_right_bg)
+        layer1.remove(bottom_left_bg)
+        layer1.remove(bottom_right_bg)
+        layer2.remove(top_left_arc)
+        layer2.remove(top_right_arc)
+        layer2.remove(bottom_left_arc)
+        layer2.remove(bottom_right_arc)
+        layer2.remove(pot1_text1)
+        layer2.remove(pot1_text2)
+        layer2.remove(pot2_text1)
+        layer2.remove(pot2_text2)
+        layer2.remove(pot3_text1)
+        layer2.remove(pot3_text2)
+        layer2.remove(pot4_text1)
+        layer2.remove(pot4_text2)
+        title2_text.text = ""
+        clear_layer3()
+        
+        title1_text.text = "Patch Menu"
+        patch_text.text = active_scene.upper()
+        left.text = "<"
+        right.text = ">"
+        left_text.text = "(Knob 5 \n left)"
+        right_text.text = "(Knob 5 \n right)"
+        layer2.append(patch_text)
+        layer2.append(left)
+        layer2.append(right)
+        layer2.append(left_text)
+        layer2.append(right_text)
+        layer2.append(title1_text)
+        layer2.append(title2_text)
+        
+        
+        
         
 def reset_encoder_positions():
     global top_left_lastpos
@@ -439,8 +537,7 @@ def scene_change(action):
                 last_scene = active_scene
                 active_scene = globals()[active_scene].nodes[i]
                 reset_encoder_positions()
-                
-    #draw new UI
+                update_settings_display()
                 break
             
     
@@ -449,11 +546,11 @@ def scene_change(action):
             last_scene = active_scene
             active_scene = current_patch
             reset_encoder_positions()
-    
-    
+            update_patch_display()
             
-    #display changes
     
+    
+#display changes
 def patch_change(action):
     global active_scene, last_scene
     global current_patch
@@ -486,18 +583,13 @@ def save_patch():
     
     
     
-    
-    
 def handle_scenes():
     scene_obj = globals()[active_scene]
     if getattr(scene_obj, "encoders", []): #only handle encoders on settings
         scene_obj.handle_encoders()
         
         
-    
-
 #initialisations
-
 def init_uihandler():
     with open("/patches.json", "r", encoding="utf-8") as file:
         json_data = json.load(file)
@@ -516,7 +608,7 @@ def init_uihandler():
             
             
     title1_text.text = "Patch Menu"
-    patch_text.text = "P1"
+    patch_text.text = active_scene.upper()
     left.text = "<"
     right.text = ">"
     left_text.text = "(Knob 5 \n left)"
@@ -529,28 +621,3 @@ def init_uihandler():
     layer2.append(title1_text)
     layer2.append(title2_text)
             
-            
-    
-            
-            
-    
-            
-            
-    
-    
-    
-    
-
-
-
-               
-
-
-
-
-    
-        
-
-    
-        
-        
