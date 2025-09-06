@@ -92,19 +92,20 @@ void dma_init(void) {
     CLOCK_EnableClock(kCLOCK_Dma0);
 
     // enable dma
-    edma_config_t edmaConfig;
-    EDMA_GetDefaultConfig(&edmaConfig); // get default config
-    EDMA_Init(DMA0, &edmaConfig); //initialize dma
+    edma_config_t edma_config;
+    EDMA_GetDefaultConfig(&edma_config); // get default config
+    EDMA_Init(DMA0, &edma_config); //initialize dma
     EDMA_CreateHandle(&dma_handle, DMA0, dma_channel); //create handle
     EDMA_SetCallback(&dma_handle, dma_callback, NULL); // register callback
     NVIC_SetPriority(DMA0_IRQn, 2); 
     NVIC_EnableIRQ(DMA0_IRQn);
 
     // transfer config
-    EDMA_PrepareTransfer(&transfer_config,
+    edma_transfer_config_t edma_transfer_config
+    EDMA_PrepareTransfer(&edma_transfer_config,
                          ring_buffer,               // source
                          sizeof(int16_t),           // size of source
-                         (void*)&SAI1->TDR[0],         // address of destination
+                         (void*)&SAI1->TDR[0],         // address of destination - fifo buffer
                          sizeof(int16_t),           // size of destination
                          sizeof(int16_t),           // minor loop - size of each sample
                          block_length * sizeof(int16_t), // major loop - size of block
