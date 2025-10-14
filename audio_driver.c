@@ -2,76 +2,139 @@
 #include "shared-bindings/audio_driver/__init__.h"
 #include <stdlib.h>
 #include "fsl_edma.h"
+#include "fsl_device_registers.h"
 #include "fsl_dmamux.h"
+#include "fsl_common.h"
+#include "MIMXRT1062.h"
+#include "MIMXRT1062_features.h"
+#include "fsl_sai_edma.h"
+#include <stdio.h>
 
-//sai includes
 #include "fsl_sai.h"
 #include "fsl_clock.h"
 #include "fsl_iomuxc.h"
 #include "fsl_gpio.h"
+#include "fsl_cache.h"
 
-static int16_t* zero_block = NULL; //empty block, if buffer underrun
+static int16_t* zero_block = NULL; //empty block, for buffer underrun
+volatile uint32_t dma_callback_count = 0;
 
+void enable_system_clocks(void) {
+    // mcu clocks
 
+    const clock_audio_pll_config_t audioPllConfig = {
+        .loopDivider = 32,      // PLL loop divider
+        .postDivider = 1,       // Post divider
+        .numerator = 77,        // Numerator for fractional part
+        .denominator = 100,     // Denominator for fractional part
+        .src = kCLOCK_PllClkSrc24M  // Use 24 MHz crystal
+    };
+    
+    CLOCK_InitAudioPll(&audioPllConfig);
+    
+    // Now configure SAI to use Audio PLL
+    CLOCK_SetMux(kCLOCK_Sai1Mux, 2);      // ✓ CHANGED: 2 = Audio PLL
+    CLOCK_SetDiv(kCLOCK_Sai1PreDiv, 3);   // Divide by 4
+    CLOCK_SetDiv(kCLOCK_Sai1Div, 15);     // ✓ CHANGED: Divide by 16
+    CLOCK_EnableClock(kCLOCK_Sai1);
+
+    CLOCK_EnableClock(kCLOCK_Iomuxc);
+    CLOCK_EnableClock(kCLOCK_IomuxcSnvs);
+    CLOCK_EnableClock(kCLOCK_Dma);
+    for (volatile int i = 0; i < 1000; i++); // small delay to ensure clocks are stable
+}
+ 
 void sai_init(void) {
+    zero_block = (int16_t *)aligned_alloc(32, block_length * sizeof(int16_t));
+    if (zero_block == NULL) {
+        printf("ERROR: Failed to allocate zero_block!\n");
+        return;
+    }
+    memset(zero_block, 0, block_length * sizeof(int16_t));
+    DCACHE_CleanByRange((uint32_t)zero_block, block_length * sizeof(int16_t));
+
+    // Get MCLK frequency (already configured in enable_system_clocks)
+    uint32_t sai1_mclk = CLOCK_GetClockRootFreq(kCLOCK_Sai1ClkRoot);
+    printf("\n=== SAI Configuration ===\n");
+    printf("MCLK: %lu Hz\n", sai1_mclk);
+
+    // Pin muxing
+    IOMUXC_SetPinMux(IOMUXC_GPIO_AD_B1_14_SAI1_TX_BCLK, 0);  // Pin 26 
+    IOMUXC_SetPinMux(IOMUXC_GPIO_AD_B1_15_SAI1_TX_SYNC, 0);  // Pin 27 
+    IOMUXC_SetPinMux(IOMUXC_GPIO_B1_01_SAI1_TX_DATA00, 0);   // Pin 7 
     
-    zero_block = (int16_t*) calloc(block_length, sizeof(int16_t));
+    // ✓ STEP 1: Initialize SAI (this must come FIRST)
+    SAI_Init(SAI1);
+    SAI_TxReset(SAI1);
 
-    SAI_Init(SAI1); 
-
-    IOMUXC_SetPinMux(IOMUXC_GPIO_B1_14_SAI1_TX_BCLK, 3,0,0,0,0); //alt 3
-    IOMUXC_SetPinMux(IOMUXC_GPIO_B1_15_SAI1_TX_SYNC, 3,0,0,0,0); //alt 3
-    IOMUXC_SetPinMux(IOMUXC_GPIO_B1_01_SAI1_TX_DATA0, 3,0,0,0,0); //pin 7 alt 3
+    // ✓ STEP 2: Configure transceiver structure
+    sai_transceiver_t tx_config;
     
-
-    //electrical settings
-    //IOMUXC_SetPinConfig(IOMUXC_GPIO_B0_10_SAI1_TX_BCLK, 0xF080);
-    //IOMUXC_SetPinConfig(IOMUXC_GPIO_B0_11_SAI1_TX_SYNC, 0xF080);
-    //IOMUXC_SetPinConfig(IOMUXC_GPIO_B1_00_SAI1_TX_DATA0, 0xF080);
-
-    sai_master_clock_t masterclock_config;
-    masterclock_config.mclkHz = 24576000; //target mclk - and for divider calc
-    masterclock_config.mclkSourceClkHz = CLOCK_GetFreq(kCLOCK_AudioPllClk); // the mclk source
-    masterclock_config.mclkOutputEnable = false; //mclk output not sent to pin because the uda1334a generates its own mclk using lrclk and bclk speeds.
-    masterclock_config.mclkSource = kSAI_MclkSourceSysclk;
-
-
-    sai_bit_clock_t bitclock_config;
-    bitclock_config.bclkSource = kSAI_BclkSourceMclkDiv; //bclk from mclk divider
-    bitclock_config.bclkPolarity = kSAI_BclkPolarityActiveHigh; //polarity - for uda1334a its high
-
-
-    sai_config_t config;
-    config.bclkSource = kSAI_BclkSourceMclkDiv; //config and bclk config both have a bclkSource value for some reason - assign it here as well
-    config.protocol = kSAI_BusI2S;
-    config.syncMode = kSAI_ModeAsync;
-    config.masterSlave = kSAI_Master;
-
-    config.mclkOutputEnable = true;
-    config.mclkSource = kSAI_MclkSourceSysclk;
-  
+    // Bit clock
+    tx_config.bitClock.bclkPolarity = kSAI_PolarityActiveHigh;
+    tx_config.bitClock.bclkSource   = kSAI_BclkSourceMclkDiv;
     
-    sai_transfer_format_t format_config;
-    format_config.bitWidth = 16;                 // 16-bit samples            
-    format_config.sampleRate_Hz = sample_rate;         // standard audio rate
-    format_config.stereo = kSAI_Stereo;   
-    format_config.masterClockHz = 24576000; /*!< Master clock frequency in Hz */                   /* FSL_FEATURE_SAI_HAS_MCLKDIV_REGISTER */
-    format_config.watermark = kSAI_Fifo0Word; /*!< Watermark value */   
-    format_config.channel = 0;
-    format_config.endChannel = 1;
-    format_config.channelNums = 2;
-    format_config.channelMask = kSAI_Channel0Mask | kSAI_Channel1Mask;
-
-    SAI_TxInit(SAI1, &config);
-
-    SAI_SetMasterClockConfig(SAI1, &masterclock_config);
-    SAI_TxSetBitclockConfig(SAI1, config.masterSlave, &bitclock_config);
-
-    SAI_TxSetFormat(SAI1, &format_config, CLOCK_GetFreq(kCLOCK_AudioPllClk), CLOCK_GetFreq(kCLOCK_AudioPllClk));
+    // Frame sync
+    tx_config.frameSync.frameSyncPolarity = kSAI_PolarityActiveHigh;
+    tx_config.frameSync.frameSyncEarly    = false;
+    
+    // Data format
+    tx_config.serialData.dataWordLength = kSAI_WordWidth16bits;
+    tx_config.serialData.dataWordNum   = 2;  // stereo
+    
+    // Master/slave
+    tx_config.masterSlave = kSAI_Master;
+    tx_config.syncMode    = kSAI_ModeAsync;
+    
+    // Channels
+    tx_config.startChannel = 0;
+    tx_config.endChannel   = 1;
+    tx_config.channelNums  = 2;
+    tx_config.channelMask  = 0x03;
+    
+    // ✓ STEP 3: Apply configuration
+    SAI_TxSetConfig(SAI1, &tx_config);
+    
+    // ✓ STEP 4: Configure FIFO
+    sai_fifo_t fifo_config = {
+        .fifoWatermark = 1
+    };
+    SAI_TxSetFifoConfig(SAI1, &fifo_config);
+    
+    // ✓ STEP 5: Set bit clock rate (AFTER SAI_TxSetConfig)
+    SAI_TxSetBitClockRate(SAI1, sai1_mclk, sample_rate, 16, 2);
+    
+    // ✓ STEP 6: Verify what was actually configured
+    uint32_t tcr2 = SAI1->TCR2;
+    uint32_t div = (tcr2 & I2S_TCR2_DIV_MASK) >> I2S_TCR2_DIV_SHIFT;
+    uint32_t actual_bclk = sai1_mclk / ((div + 1) * 2);
+    uint32_t actual_fs = actual_bclk / 32;
+    
+    printf("Divider: %lu\n", div);
+    printf("Actual BCLK: %lu Hz\n", actual_bclk);
+    printf("Actual sample rate: %lu Hz (target: %u Hz)\n", actual_fs, sample_rate);
+    
+    // ✓ If sample rate is wrong, try manual configuration
+    if (actual_fs < (sample_rate * 0.98) || actual_fs > (sample_rate * 1.02)) {
+        printf("WARNING: Sample rate out of tolerance, setting manually...\n");
+        
+        uint32_t target_bclk = sample_rate * 32;
+        uint32_t manual_div = (sai1_mclk / target_bclk / 2) - 1;
+        
+        printf("Manual divider: %lu\n", manual_div);
+        SAI1->TCR2 = (SAI1->TCR2 & ~I2S_TCR2_DIV_MASK) | I2S_TCR2_DIV(manual_div);
+        
+        // Verify manual setting
+        div = (SAI1->TCR2 & I2S_TCR2_DIV_MASK) >> I2S_TCR2_DIV_SHIFT;
+        actual_bclk = sai1_mclk / ((div + 1) * 2);
+        actual_fs = actual_bclk / 32;
+        printf("After manual: Div=%lu, BCLK=%lu Hz, Fs=%lu Hz\n", div, actual_bclk, actual_fs);
+    }
+    
+    printf("========================\n\n");
+    
+    // ✓ STEP 7: Enable DMA requests
     SAI_TxEnableDMA(SAI1, kSAI_FIFORequestDMAEnable, true);
-    SAI_TxSetWatermark(SAI1, kSAI_Fifo6Word); //fifo watermark
-
-    SAI_TxEnable(SAI1, true);
 }
 
 
@@ -80,87 +143,126 @@ void sai_init(void) {
 //DMA initialisation
 
 static edma_handle_t dma_handle;
-edma_transfer_config_t transfer_config;
 
 #define dma_channel 20
 
 void dma_init(void) {
-    // enable dma mux
-    DMAMUX_Init(DMAMUX);
-    DMAMUX_SetSource(DMAMUX, dma_channel, kDmaRequestMuxSai1Tx); // I2S1 TX
-    DMAMUX_EnableChannel(DMAMUX, dma_channel);
-    CLOCK_EnableClock(kCLOCK_Dma0);
-
-    // enable dma
-    edma_config_t edma_config;
-    EDMA_GetDefaultConfig(&edma_config); // get default config
-    EDMA_Init(DMA0, &edma_config); //initialize dma
-    EDMA_CreateHandle(&dma_handle, DMA0, dma_channel); //create handle
-    EDMA_SetCallback(&dma_handle, dma_callback, NULL); // register callback
-    NVIC_SetPriority(DMA0_IRQn, 2); 
-    NVIC_EnableIRQ(DMA0_IRQn);
-
-    // transfer config
-    edma_transfer_config_t edma_transfer_config
-    EDMA_PrepareTransfer(&edma_transfer_config,
-                         ring_buffer,               // source
-                         sizeof(int16_t),           // size of source
-                         (void*)&SAI1->TDR[0],         // address of destination - fifo buffer
-                         sizeof(int16_t),           // size of destination
-                         sizeof(int16_t),           // minor loop - size of each sample
-                         block_length * sizeof(int16_t), // major loop - size of block
-                         kEDMA_MemoryToPeripheral); //direction of transfer
-
-    EDMA_SetModulo(DMA0, dma_channel, kEDMA_ModuloDisable, kEDMA_ModuloDisable);
-
-    EDMA_SubmitTransfer(&dma_handle, &transfer_config, kEDMA_EnableInterruptMask);
-
-    EDMA_StartTransfer(&dma_handle); //start dma
+    printf("\n=== DMA Configuration ===\n");
     
-    }
+    // 1. Initialize DMAMUX
+    DMAMUX_Init(DMAMUX);
+    DMAMUX_SetSource(DMAMUX, dma_channel, kDmaRequestMuxSai1Tx);
+    DMAMUX_EnableChannel(DMAMUX, dma_channel);
+    
+    printf("DMAMUX source: %d (SAI1 TX)\n", kDmaRequestMuxSai1Tx);
+
+    // 2. Initialize eDMA
+    edma_config_t edma_config;
+    EDMA_GetDefaultConfig(&edma_config);
+    EDMA_Init(DMA0, &edma_config);
+    
+    // 3. Create handle
+    EDMA_CreateHandle(&dma_handle, DMA0, dma_channel);
+    EDMA_SetCallback(&dma_handle, dma_callback, NULL);
+
+    // 4. Enable interrupts
+    EDMA_EnableChannelInterrupts(DMA0, dma_channel, kEDMA_MajorInterruptEnable);
+    NVIC_SetPriority(DMA4_DMA20_IRQn, 2);
+    NVIC_EnableIRQ(DMA4_DMA20_IRQn);
+
+    // 5. ✓ CRITICAL: Prepare transfer with proper settings
+    edma_transfer_config_t edma_transfer_config;
+    EDMA_PrepareTransfer(&edma_transfer_config,
+                     zero_block,                                     // Source
+                     sizeof(int16_t),                                // Source width
+                     (void *)SAI_TxGetDataRegisterAddress(SAI1, 0), // Destination
+                     sizeof(int16_t),                                // Dest width
+                     sizeof(int16_t),                                // Bytes per minor loop
+                     block_length * sizeof(int16_t),                 // Total bytes
+                     kEDMA_MemoryToPeripheral);
+
+    // ✓ CRITICAL: Manually configure for peripheral-paced transfer
+    // The EDMA_PrepareTransfer sets up basic params, but we need to ensure
+    // it's truly peripheral-paced
+    
+    EDMA_SubmitTransfer(&dma_handle, &edma_transfer_config);
+    
+    // ✓ ADD: Disable DMA request (don't start yet!)
+    EDMA_DisableChannelRequest(DMA0, dma_channel);
+    
+    
+    // ✓ Now enable SAI FIRST (so it can generate requests)
+    SAI_TxEnable(SAI1, true);
+    printf("SAI TX enabled\n");
+    
+    // Small delay to let SAI stabilize
+    for (volatile int i = 0; i < 10000; i++);
+    
+    // ✓ Check if SAI is generating FIFO requests
+    uint32_t tcsr = SAI1->TCSR;
+    printf("SAI TCSR: 0x%08lX\n", tcsr);
+    printf("SAI FIFO Request Flag: %s\n", (tcsr & I2S_TCSR_FRF_MASK) ? "YES" : "NO");
+    printf("SAI FIFO Warning Flag: %s\n", (tcsr & I2S_TCSR_FWF_MASK) ? "YES" : "NO");
+    
+    // ✓ NOW enable DMA request
+    EDMA_EnableChannelRequest(DMA0, dma_channel);
+    printf("DMA request enabled\n");
+    
+    // ✓ Start the DMA transfer
+    EDMA_StartTransfer(&dma_handle);
+    printf("DMA started\n");
+    
+    // Verify DMA is now active
+}
 
 
-void DMA0_IRQHandler(void) {
-    EDMA_HandleIRQ(&dma_handle);
+void DMA4_DMA20_IRQHandler(void) {
+    dma_callback_count ++;
+    EDMA_HandleIRQ(&dma_handle); //handle iqr SHOULD clear the interrupt flag
 }
 
 //dma callback
-void dma_callback(edma_handle_t *handle, void *param, bool transferDone, uint32_t tcds) {
-    uint32_t ptrs = buffer_ptrs;
-    uint16_t read_ptr = ptrs >> 16;
-    uint16_t write_ptr = ptrs & 0xFFFF;
-    edma_transfer_config_t next_transfer_config;
-
-    if (transferDone) {
-        int16_t *src_ptr;
-        
-        int16_t available = 0;
-        if (write_ptr >= read_ptr) {
-            available = write_ptr - read_ptr;
-        } else {
-            available = buffer_size - read_ptr + write_ptr;
-        }
-
-        if (available >= block_length) {
-            src_ptr = &ring_buffer[read_ptr];
-            read_ptr = (read_ptr + block_length) % buffer_size;
-        } else {
-            src_ptr = zero_block; // underrun → silence
-        }
-
-        set_read_ptr(read_ptr); // update read pointer
-
-        // Prepare the next transfer
-        EDMA_PrepareTransfer(&next_transfer_config,
-                             src_ptr,                  // new source block
-                             sizeof(int16_t),
-                             (void *)&SAI1->TDR[0],   // destination (SAI FIFO)
-                             sizeof(int16_t),
-                             sizeof(int16_t),          // minor loop = 1 sample
-                             block_length * sizeof(int16_t), // major loop = block
-                             kEDMA_MemoryToPeripheral);
-
-        // Submit it again
-        EDMA_SubmitTransfer(handle, &next_transfer_config, kEDMA_EnableInterruptMask);
+void dma_callback(edma_handle_t *handle, void *userData, bool transferDone, uint32_t tcds) {
+    if (!transferDone) {
+        return; //skip rest of function if transfer not done
     }
+    uint16_t read_ptr, write_ptr;
+    get_buffer_ptrs(&read_ptr, &write_ptr);
+    edma_transfer_config_t next_transfer_config;
+    
+    int16_t *src_ptr;
+    
+    int16_t available = 0;
+    
+    if (write_ptr >= read_ptr) {
+        available = write_ptr - read_ptr;
+    } else {
+        available = buffer_size - read_ptr + write_ptr;
+    }
+    if (available >= block_length) {
+        
+        src_ptr = &ring_buffer[read_ptr];
+        DCACHE_CleanByRange((uint32_t)src_ptr, block_length * sizeof(int16_t));
+        set_read_ptr((read_ptr + block_length) % buffer_size); // update read pointer
+        
+    } else {
+        src_ptr = zero_block; // underrun
+        DCACHE_CleanByRange((uint32_t)src_ptr, block_length * sizeof(int16_t));
+    }
+    
+    
+    // Prepare the next transfer
+    EDMA_PrepareTransfer(&next_transfer_config,
+                 src_ptr,                        // src address
+                 sizeof(int16_t),                    // src width (2 bytes)
+                 (void *)SAI_TxGetDataRegisterAddress(SAI1, 0), // dest address
+                 sizeof(int16_t),                    // dest width (2 bytes)  
+                 sizeof(int16_t),                    // minor loop
+                 block_length * sizeof(int16_t),     // major loop 
+                 kEDMA_MemoryToPeripheral); 
+    // Submit it again
+    EDMA_SubmitTransfer(handle, &next_transfer_config);
+    EDMA_StartTransfer(handle);
+    
 }
+//in technical solution, if you have a diary of something - like oh i had this problem and had to stop becauas this didnt work so i did mroe resarch and design and then built it again 
