@@ -11,6 +11,8 @@ except ImportError:
     from displayio import FourWire
 from adafruit_display_shapes.arc import Arc
 from adafruit_display_shapes.line import Line
+import shared_resources
+
 
 
 patches = []
@@ -18,120 +20,21 @@ active_scene = "p0"
 current_patch = "p0"
 last_scene = "p0"
 
-top_left = rotaryio.IncrementalEncoder(board.D10, board.D9)
-top_right = rotaryio.IncrementalEncoder(board.D10, board.D9)
-bottom_left = rotaryio.IncrementalEncoder(board.D10, board.D9)
-bottom_right = rotaryio.IncrementalEncoder(board.D10, board.D9)
+top_left = rotaryio.IncrementalEncoder(board.D33, board.D34)
+top_right = rotaryio.IncrementalEncoder(board.D35, board.D36)
+bottom_left = rotaryio.IncrementalEncoder(board.D37, board.D38)
+bottom_right = rotaryio.IncrementalEncoder(board.D39, board.D40)
 
-#display init
-displayio.release_displays()
-spi = busio.SPI(clock=board.D13, MISO=board.D12, MOSI=board.D11)
-cs = board.D10
-dc = board.D9
-reset = board.D8
 
-display_bus = FourWire(spi, command=dc, chip_select=cs, reset=reset)
-display = adafruit_ili9341.ILI9341(display_bus, width=320, height=240)
 
-splash = displayio.Group()
-display.root_group = splash
-
-layer0 = displayio.Group()  # background colour
-layer1 = displayio.Group()  # arc backgrounds
-layer2 = displayio.Group()
-layer3 = displayio.Group()
-
-splash.append(layer0)  # index 0
-splash.append(layer1)  # index 1
-splash.append(layer2)
-splash.append(layer3)
-
-bg = displayio.TileGrid(
-    displayio.Bitmap(display.width, display.height, 1),
-    pixel_shader=displayio.Palette(1)
-)
-bg.pixel_shader[0] = 0x09082B
-layer0.append(bg)
-
-helvb12 = bitmap_font.load_font("/helvb12.bdf")
-helvb14 = bitmap_font.load_font("/helvb14.bdf")
-helvb24 = bitmap_font.load_font("/helvb24.bdf")
-helvr08 = bitmap_font.load_font("/helvr08.bdf")
+helvb12 = bitmap_font.load_font("/helvB12.bdf")
+helvb14 = bitmap_font.load_font("/helvB14.bdf")
+helvb24 = bitmap_font.load_font("/helvB24.bdf")
+helvr08 = bitmap_font.load_font("/helvR08.bdf")
 
 def dir_from_start(start_deg, sweep_deg):
     return int((start_deg - (sweep_deg / 2.0)) % 360)
 
-def draw_sine():
-    global layer3
-    layer3.append(Arc(x=54, y=108, radius=32,angle=180, direction=90, segments=40, outline=0xFF0000, arc_width=1.3, fill=0xFF0000))
-    layer3.append(Arc(x=116, y=108, radius=32, angle=180, direction=270, segments=40, outline=0xFF0000, arc_width=1.3, fill=0xFF0000))
-    layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
-    layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
-    
-def draw_saw():
-    global layer3
-    layer3.append(Line(22,108,44,50, color=0xff0000))
-    layer3.append(Line(44,50,44,170, color=0xff0000))
-    layer3.append(Line(44,170,86,50, color=0xff0000))
-    layer3.append(Line(86,50,86,170, color=0xff0000))
-    layer3.append(Line(86,170,128,50, color=0xff0000))
-    layer3.append(Line(128,50,128,170, color=0xff0000))
-    layer3.append(Line(128,170,148,108, color=0xff0000))
-    layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
-    layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
-    
-def draw_triangle():
-    global layer3
-    layer3.append(Line(22,108,38,65, color=0xff0000))
-    layer3.append(Line(38,65,70,152, color=0xff0000))
-    layer3.append(Line(70,152,102,65, color=0xff0000))
-    layer3.append(Line(102,65,134,152, color=0xff0000))
-    layer3.append(Line(134,152,148,108, color=0xff0000))
-    layer3.append(Line(134,152,148,108, color=0xff0000))
-    layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
-    layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
-    
-def draw_square():
-    global layer3
-    layer3.append(Line(22,58,53,58, color=0xff0000))
-    layer3.append(Line(53,58,53,158, color=0xff0000))
-    layer3.append(Line(53,158,84,158, color=0xff0000))
-    layer3.append(Line(84,158,84,58, color=0xff0000))
-    layer3.append(Line(84,58,115,58, color=0xff0000))
-    layer3.append(Line(115,58,115,158, color=0xff0000))
-    layer3.append(Line(115,158,146,158, color=0xff0000))
-    layer3.append(Line(146,158,146,108, color=0xff0000))
-    layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
-    layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
-    
-def draw_env(a,d,s,r):
-    global layer3
-    attack_px = int((max(0, min(1, a/2000)))**0.4 * 40)
-    decay_px = int((max(0, min(1, d/5000)))**0.5 * 42)
-    sustain_level = int(100*(1-s))
-    release_px = int((max(0, min(1, r/5000)))**0.5 * 42)
-
-    layer3.append(Line(22,160,22 + attack_px,60, color=0xff0000))
-    layer3.append(Line(22+attack_px, 60, 22+attack_px+decay_px, 60 + sustain_level, color=0xffff00))
-    layer3.append(Line(22+attack_px+decay_px, 60 + sustain_level, 22+attack_px+decay_px+release_px, 160, color=0xff0000))
-    
-def draw_filter(cutoff, resonance):
-    global layer3
-    cutoff_px = int((max(0, min(1, cutoff/20000)))**0.4 * 90)
-    resonance_px = int((max(0, min(1, resonance/4.5)))**0.5 * 30)
-
-    layer3.append(Line(22,90,22+cutoff_px,90, color=0xff0000))
-    layer3.append(Line(22+cutoff_px,90,37+cutoff_px,90-resonance_px, color=0xff0000))
-    layer3.append(Line(37+cutoff_px,90-resonance_px, 57+cutoff_px, 160, color=0xff0000))
-    
-def clear_layer3():
-    global layer3
-    layer3 = displayio.Group()
-    splash[3] = layer3
-    
-
-    
-    
 top_left_arc = Arc(x=200, y=40, radius=25, angle=120, direction=dir_from_start(270, 120), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
 top_right_arc = Arc(x=280, y=40, radius=25, angle=320, direction=dir_from_start(270, 320), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
 bottom_left_arc = Arc(x=200, y=115, radius=25, angle=260, direction=dir_from_start(270, 260), segments=50, outline=0xff0000, arc_width=2, fill=0xff0000)
@@ -164,7 +67,7 @@ right_text = label.Label(font = helvr08, text="", color=0x575756, anchored_posit
 
 
 
-#all in order of topright, bottomleft, bottomright - 
+#all in order of topright, bottomleft, bottomright
 encoder_names = [top_right, bottom_left, bottom_right]
 encoder_lastpos = [0,0,0]
 
@@ -173,21 +76,84 @@ for i in range(3):
     encoder_lastpos[i] = encoder_names[i].position
 
 
+def draw_sine():
+    shared_resources.layer3.append(Arc(x=54, y=108, radius=32,angle=180, direction=90, segments=40, outline=0xFF0000, arc_width=1.3, fill=0xFF0000))
+    shared_resources.layer3.append(Arc(x=116, y=108, radius=32, angle=180, direction=270, segments=40, outline=0xFF0000, arc_width=1.3, fill=0xFF0000))
+    shared_resources.layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
+    shared_resources.layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
+    
+def draw_saw():
+    shared_resources.layer3.append(Line(22,108,44,50, color=0xff0000))
+    shared_resources.layer3.append(Line(44,50,44,170, color=0xff0000))
+    shared_resources.layer3.append(Line(44,170,86,50, color=0xff0000))
+    shared_resources.layer3.append(Line(86,50,86,170, color=0xff0000))
+    shared_resources.layer3.append(Line(86,170,128,50, color=0xff0000))
+    shared_resources.layer3.append(Line(128,50,128,170, color=0xff0000))
+    shared_resources.layer3.append(Line(128,170,148,108, color=0xff0000))
+    shared_resources.layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
+    shared_resources.layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
+    
+def draw_triangle():
+    shared_resources.layer3.append(Line(22,108,38,65, color=0xff0000))
+    shared_resources.layer3.append(Line(38,65,70,152, color=0xff0000))
+    shared_resources.layer3.append(Line(70,152,102,65, color=0xff0000))
+    shared_resources.layer3.append(Line(102,65,134,152, color=0xff0000))
+    shared_resources.layer3.append(Line(134,152,148,108, color=0xff0000))
+    shared_resources.layer3.append(Line(134,152,148,108, color=0xff0000))
+    shared_resources.layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
+    shared_resources.layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
+    
+def draw_square():
+    shared_resources.layer3.append(Line(22,58,53,58, color=0xff0000))
+    shared_resources.layer3.append(Line(53,58,53,158, color=0xff0000))
+    shared_resources.layer3.append(Line(53,158,84,158, color=0xff0000))
+    shared_resources.layer3.append(Line(84,158,84,58, color=0xff0000))
+    shared_resources.layer3.append(Line(84,58,115,58, color=0xff0000))
+    shared_resources.layer3.append(Line(115,58,115,158, color=0xff0000))
+    shared_resources.layer3.append(Line(115,158,146,158, color=0xff0000))
+    shared_resources.layer3.append(Line(146,158,146,108, color=0xff0000))
+    shared_resources.layer3.append(Line(10,108,146,108, color=0xffffff)) #x axis
+    shared_resources.layer3.append(Line(22,45,22,170, color=0xffffff)) #y axis
+    
+def draw_env(a,d,s,r):
+    attack_px = int((max(0, min(1, a/2000)))**0.4 * 40)
+    decay_px = int((max(0, min(1, d/5000)))**0.5 * 42)
+    sustain_level = int(100*(1-s))
+    release_px = int((max(0, min(1, r/5000)))**0.5 * 42)
+
+    shared_resources.layer3.append(Line(22,160,22 + attack_px,60, color=0xff0000))
+    shared_resources.layer3.append(Line(22+attack_px, 60, 22+attack_px+decay_px, 60 + sustain_level, color=0xffff00))
+    shared_resources.layer3.append(Line(22+attack_px+decay_px, 60 + sustain_level, 22+attack_px+decay_px+release_px, 160, color=0xff0000))
+    
+def draw_filter(cutoff, resonance):
+    cutoff_px = int((max(0, min(1, cutoff/20000)))**0.4 * 90)
+    resonance_px = int((max(0, min(1, resonance/4.5)))**0.5 * 30)
+
+    shared_resources.layer3.append(Line(22,90,22+cutoff_px,90, color=0xff0000))
+    shared_resources.layer3.append(Line(22+cutoff_px,90,37+cutoff_px,90-resonance_px, color=0xff0000))
+    shared_resources.layer3.append(Line(37+cutoff_px,90-resonance_px, 57+cutoff_px, 160, color=0xff0000))
+    
+def clear_layer3():
+    shared_resources.layer3 = displayio.Group()
+    shared_resources.splash[3] = shared_resources.layer3
+
+
+
 
 parameters = {
     "osc1_wave": "sine",
-    "osc1_level" : 0,
-    "osc1_unison" : 0,
-    "osc1_detune" : 0,
+    "osc1_level" : 0.5,
+    "osc1_unison" : 1,
+    "osc1_detune" : 1,
     
     "osc2_wave": "sine",
     "osc2_level" : 0,
-    "osc2_unison" : 0,
+    "osc2_unison" : 1,
     "osc2_detune" : 0,
     
-    "env1_attack" : 0,
-    "env1_decay" : 0,
-    "env1_sustain" : 0,
+    "env1_attack" : 1,
+    "env1_decay" : 1,
+    "env1_sustain" : 0.0,
     "env1_release" : 0,
     
     "env2_attack" : 0,
@@ -203,7 +169,7 @@ parameters = {
 parameter_metadata = {
     "osc1_wave": {"type": "string", "choices": ["sine", "triangle", "saw", "square"]},
     "osc1_level":    {"type": "float", "min": 0.0, "max": 1.0,   "step": 0.02},
-    "osc1_unison":   {"type": "int",   "min": 1,   "max": 7,     "step": 2},
+    "osc1_unison":   {"type": "int",   "min": 1,   "max": 7,     "step": 2}, #min 1 to prevent divison by zero in unison clipping calcs
     "osc1_detune":   {"type": "float", "min": 0.0, "max": 24,  "step": 0.4},
 
     "osc2_wave": {"type": "string", "choices": ["sine", "triangle", "saw", "square"]},
@@ -216,7 +182,7 @@ parameter_metadata = {
     "env1_sustain":  {"type": "float", "min": 0.0, "max": 1.0,   "step": 0.01},
     "env1_release":  {"type": "int",   "min": 1,   "max": 5000,  "step": 1},
 
-    "env2_attack":   {"type": "int",   "min": 1,   "max": 2000,  "step": 5},
+    "env2_attack":   {"type": "int",   "min": 1,   "max": 2000,  "step": 5}, #minimum 1 to prevent division by zero in envelope calcs
     "env2_decay":    {"type": "int",   "min": 1,   "max": 5000,  "step": 5},
     "env2_sustain":  {"type": "float", "min": 0.0, "max": 1.0,   "step": 0.02},
     "env2_release":  {"type": "int",   "min": 1,   "max": 5000,  "step": 5},
@@ -249,11 +215,6 @@ scenes = {
     
 }
    
-
-
-
-
-    
 class Scene(): #parent class for all scenes
     def __init__(self):
         print("Initialised")
@@ -273,8 +234,6 @@ class settings(Scene): #child class for settings scenes
 
         
         
-            
-            
     def handle_encoders(self):
         global top_left_lastpos
         encoder_changes = [0,0,0]
@@ -284,25 +243,26 @@ class settings(Scene): #child class for settings scenes
         
         if top_left_lastpos != top_left.position:
             top_left_change = top_left.position - top_left_lastpos
-            if self.encoders[0] == "osc1_wave" or self.encoders[0] == "osc2_wave": #for osc types
+            top_left_lastpos = top_left.position
+            
+            #handle encoders differently if wave parameter (strings need to be handled differently to int/floats)
+            if self.encoders[0] == "osc1_wave" or self.encoders[0] == "osc2_wave": 
                 current_wave = parameters[self.encoders[0]]
                 current_osc = self.encoders[0]
-                try:
-                    parameters[self.encoders[0]] = parameter_metadata[current_osc]["choices"][parameter_metadata[current_osc]["choices"].index(current_wave) + top_left_change]
-                    pot1_text1.text = parameters[self.encoders[0]]
-                    if self.encoders[0] == "osc1_wave":
-                        globals()["draw_" + parameters["osc1_wave"]]()
-                    elif self.encoders[0] == "osc2_wave":
-                        globals()["draw_" + parameters["osc2_wave"]]()
-                    
-                except:
-                    pass                
+                parameters[self.encoders[0]] = parameter_metadata[current_osc]["choices"][(parameter_metadata[current_osc]["choices"].index(current_wave) + top_left_change) % 4]
+                pot1_text1.text = parameters[self.encoders[0]]
+                
+                if self.encoders[0] == "osc1_wave": #update graphic
+                    globals()["draw_" + parameters["osc1_wave"]]()
+                elif self.encoders[0] == "osc2_wave":
+                    globals()["draw_" + parameters["osc2_wave"]]()
+                            
             else:
                 tl_new_value = parameters[self.encoders[0]] + top_left_change*parameter_metadata[self.encoders[0]]["step"]
                 if tl_new_value <= parameter_metadata[self.encoders[0]]["max"] and tl_new_value >= parameter_metadata[self.encoders[0]]["min"]:
-                    parameters[self.encoders[0]] = tl_new_value #value
-                    pot1_text1.text = str(parameters[self.encoders[0]]) #ui
-                    top_left_arc.angle = (parameters[self.encoders[0]] - parameter_metadata[self.encoders[0]]["min"])/(parameter_metadata[self.encoders[0]]["max"] - parameter_metadata[self.encoders[0]]["min"])*360
+                    parameters[self.encoders[0]] = tl_new_value #update value
+                    pot1_text1.text = str(parameters[self.encoders[0]]) #update ui text
+                    top_left_arc.angle = (parameters[self.encoders[0]] - parameter_metadata[self.encoders[0]]["min"])/(parameter_metadata[self.encoders[0]]["max"] - parameter_metadata[self.encoders[0]]["min"])*360 #update ui arc
                     top_left_arc.direction = dir_from_start(270, top_left_arc.angle)
                     
                     if self.encoders[0] == "env1_attack":
@@ -313,7 +273,6 @@ class settings(Scene): #child class for settings scenes
                         draw_filter(parameters["filter_cutoff"], parameters["filter_resonance"])
                     
             
-            top_left_lastpos = top_left.position
             
         for i in range(1, len(self.encoders)): #for all other parameters
             try:
@@ -322,7 +281,7 @@ class settings(Scene): #child class for settings scenes
                     encoder_new_values[i] = parameters[self.encoders[i]] + encoder_changes[i]*parameter_metadata[self.encoders[i]]["step"]
                     if encoder_new_values[i] <= parameter_metadata[self.encoders[i]]["max"] and encoder_new_values[i] >= parameter_metadata[self.encoders[i]]["min"]:
                         parameters[self.encoders[i]] = encoder_new_values[i]
-                        globals()[text_objects[i]].text = str(parameters[self.encoders[i]])
+                        globals()[text_objects[i-1]].text = str(parameters[self.encoders[i]])
                         arc_objects[i].angle = (parameters[self.encoders[i]] - parameter_metadata[self.encoders[i]]["min"])/(parameter_metadata[self.encoders[i]]["max"] - parameter_metadata[self.encoders[i]]["min"])*360
                         arc_objects[i].direction = dir_from_start(270, arc_objects[i].angle)
                         if self.encoders[0] == "env1_attack":
@@ -334,7 +293,11 @@ class settings(Scene): #child class for settings scenes
             
                 encoder_lastpos[i] = encoder_names[i].position
             
-            except:
+            except IndexError:
+                print(f"Index error in encoder {i}")
+                break
+            except KeyError as e:
+                print(f"Missing key: {e}")
                 break
         
                 
@@ -460,22 +423,22 @@ def update_settings_display():
             pot4_text1.text = str(parameters[encoders[3]])
             pot4_text2.text = str(encoders[3].split("_")[1]).upper()
             
-        layer1.append(top_left_bg)
-        layer1.append(top_right_bg)
-        layer1.append(bottom_left_bg)
-        layer1.append(bottom_right_bg)
-        layer2.append(top_left_arc)
-        layer2.append(top_right_arc)
-        layer2.append(bottom_left_arc)
-        layer2.append(bottom_right_arc)
-        layer2.append(pot1_text1)
-        layer2.append(pot1_text2)
-        layer2.append(pot2_text1)
-        layer2.append(pot2_text2)
-        layer2.append(pot3_text1)
-        layer2.append(pot3_text2)
-        layer2.append(pot4_text1)
-        layer2.append(pot4_text2)
+        shared_resources.layer1.append(top_left_bg)
+        shared_resources.layer1.append(top_right_bg)
+        shared_resources.layer1.append(bottom_left_bg)
+        shared_resources.layer1.append(bottom_right_bg)
+        shared_resources.layer2.append(top_left_arc)
+        shared_resources.layer2.append(top_right_arc)
+        shared_resources.layer2.append(bottom_left_arc)
+        shared_resources.layer2.append(bottom_right_arc)
+        shared_resources.layer2.append(pot1_text1)
+        shared_resources.layer2.append(pot1_text2)
+        shared_resources.layer2.append(pot2_text1)
+        shared_resources.layer2.append(pot2_text2)
+        shared_resources.layer2.append(pot3_text1)
+        shared_resources.layer2.append(pot3_text2)
+        shared_resources.layer2.append(pot4_text1)
+        shared_resources.layer2.append(pot4_text2)
         
 
 
@@ -485,38 +448,40 @@ def update_patch_display():
         patch_text.text = active_scene.upper()
     
     else:
-        layer1.remove(top_left_bg)
-        layer1.remove(top_right_bg)
-        layer1.remove(bottom_left_bg)
-        layer1.remove(bottom_right_bg)
-        layer2.remove(top_left_arc)
-        layer2.remove(top_right_arc)
-        layer2.remove(bottom_left_arc)
-        layer2.remove(bottom_right_arc)
-        layer2.remove(pot1_text1)
-        layer2.remove(pot1_text2)
-        layer2.remove(pot2_text1)
-        layer2.remove(pot2_text2)
-        layer2.remove(pot3_text1)
-        layer2.remove(pot3_text2)
-        layer2.remove(pot4_text1)
-        layer2.remove(pot4_text2)
+        #deletions
+        shared_resources.layer1.remove(top_left_bg)
+        shared_resources.layer1.remove(top_right_bg)
+        shared_resources.layer1.remove(bottom_left_bg)
+        shared_resources.layer1.remove(bottom_right_bg)
+        shared_resources.layer2.remove(top_left_arc)
+        shared_resources.layer2.remove(top_right_arc)
+        shared_resources.layer2.remove(bottom_left_arc)
+        shared_resources.layer2.remove(bottom_right_arc)
+        shared_resources.layer2.remove(pot1_text1)
+        shared_resources.layer2.remove(pot1_text2)
+        shared_resources.layer2.remove(pot2_text1)
+        shared_resources.layer2.remove(pot2_text2)
+        shared_resources.layer2.remove(pot3_text1)
+        shared_resources.layer2.remove(pot3_text2)
+        shared_resources.layer2.remove(pot4_text1)
+        shared_resources.layer2.remove(pot4_text2)
         title2_text.text = ""
         clear_layer3()
         
+        #additions
         title1_text.text = "Patch Menu"
         patch_text.text = active_scene.upper()
         left.text = "<"
         right.text = ">"
         left_text.text = "(Knob 5 \n left)"
         right_text.text = "(Knob 5 \n right)"
-        layer2.append(patch_text)
-        layer2.append(left)
-        layer2.append(right)
-        layer2.append(left_text)
-        layer2.append(right_text)
-        layer2.append(title1_text)
-        layer2.append(title2_text)
+        shared_resources.layer2.append(patch_text)
+        shared_resources.layer2.append(left)
+        shared_resources.layer2.append(right)
+        shared_resources.layer2.append(left_text)
+        shared_resources.layer2.append(right_text)
+        shared_resources.layer2.append(title1_text)
+        shared_resources.layer2.append(title2_text)
         
         
         
@@ -591,9 +556,17 @@ def handle_scenes():
         
 #initialisations
 def init_uihandler():
-    with open("/patches.json", "r", encoding="utf-8") as file:
-        json_data = json.load(file)
+    try: #handle missing or invalid json file 
+        with open("/patches.json", "r", encoding="utf-8") as file:
+            json_data = json.load(file)
+    except OSError:
+        print("patches.json not found, using defaults")
+        json_data = {"p0": parameters.copy()}
+    except ValueError:
+        print("patches.json invalid format, using defaults")
+        json_data = {"p0": parameters.copy()}
 
+    
     for patch_name, patch_data in json_data.items():
         globals()[patch_name] = patch(patch_name, patch_data)
     
@@ -613,11 +586,11 @@ def init_uihandler():
     right.text = ">"
     left_text.text = "(Knob 5 \n left)"
     right_text.text = "(Knob 5 \n right)"
-    layer2.append(patch_text)
-    layer2.append(left)
-    layer2.append(right)
-    layer2.append(left_text)
-    layer2.append(right_text)
-    layer2.append(title1_text)
-    layer2.append(title2_text)
+    shared_resources.layer2.append(patch_text)
+    shared_resources.layer2.append(left)
+    shared_resources.layer2.append(right)
+    shared_resources.layer2.append(left_text)
+    shared_resources.layer2.append(right_text)
+    shared_resources.layer2.append(title1_text)
+    shared_resources.layer2.append(title2_text)
             
