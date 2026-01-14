@@ -11,6 +11,7 @@ extern uint16_t buffer_size;
 extern volatile uint32_t buffer_ptrs;
 extern int16_t* ring_buffer;
 extern uint16_t sample_rate;
+extern volatile bool audio_running;
 
 
 
@@ -22,9 +23,10 @@ mp_obj_t audio_driver_buffer_has_space(void);
 mp_obj_t audio_driver_send_to_buffer(mp_obj_t py_block);
 mp_obj_t audio_driver_py_get_pointers(void);
 mp_obj_t audio_driver_get_callback_count(void);
+mp_obj_t audio_driver_dump_sai_registers(void);
 
 
-void calculate_coefficients(void);
+void calculate_coefficients(float cutoff, float resonance);
 void set_read_ptr(uint16_t read);
 void set_write_ptr(uint16_t write);
 void get_buffer_ptrs(uint16_t *read_ptr, uint16_t *write_ptr);
