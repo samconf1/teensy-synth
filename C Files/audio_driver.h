@@ -7,6 +7,7 @@
 #include "py/obj.h"
 
 extern volatile uint32_t dma_callback_count;
+extern volatile uint32_t underrun_count;
 
 
 extern void set_read_ptr(uint16_t read_ptr);
@@ -17,6 +18,8 @@ void dma_init(void);
 
 void DMA4_DMA20_IRQHandler(void);
 void dma_callback(edma_handle_t *handle, void *param, bool transferDone, uint32_t tcds);
+
+mp_obj_t audio_driver_get_underrun_count(void);
 
 
 #endif
