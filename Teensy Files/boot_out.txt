@@ -1,0 +1,3 @@
+Adafruit CircuitPython 10.0.0-beta.3-8-ga96f1123d9-dirty on 2025-12-09; Teensy 4.1 with IMXRT1062DVJ6A
+Board ID:teensy41
+UID:218A3F65D7A13A3DCA00015002004200

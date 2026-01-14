@@ -1,0 +1,22 @@
+{
+"p0" : {
+  "env1_attack": 50,
+  "env1_decay": 50,
+  "env1_sustain": 0.6,
+  "env1_release": 500,
+  "osc1_wave": "saw",
+  "osc1_unison": 7,
+  "osc1_detune": 0.7,
+  "osc1_level": 0.8,
+  "env2_decay": 30,
+  "env2_sustain": 0.4,
+  "env2_attack": 400,
+  "osc2_wave": "square",
+  "osc2_unison": 3,
+  "osc2_detune": 0.8,
+  "osc2_level": 0.8,
+  "filter_cutoff" : 2000,
+  "filter_resonance" : 1.0
+}}
+
+
